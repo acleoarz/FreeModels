@@ -323,6 +323,7 @@ def get_available_models():
             }
             resp = requests.get(f"{svc['base_url']}/models", headers=headers, timeout=15)
             resp.raise_for_status()
+            resp.encoding = "utf-8"  # avoid mojibake if server omits charset in Content-Type
             data = resp.json()
             models = [m["id"] for m in data.get("data", [])]
             for m in models:
@@ -436,7 +437,13 @@ def stream_chat_completion(composite_model, messages, tools=None):
         if resp.status_code != 200: 
             error_text = resp.text[:500]
             raise Exception(f"HTTP {resp.status_code}: {error_text}")
-            
+
+        # Force UTF-8 decoding: if the server's Content-Type header omits a
+        # charset, `requests` defaults to ISO-8859-1 for text/* responses per
+        # the old HTTP spec, which mangles UTF-8 (Cyrillic, emoji, etc.) into
+        # mojibake. The gateways here always actually send UTF-8 JSON/SSE.
+        resp.encoding = "utf-8"
+
         for raw_line in resp.iter_lines(decode_unicode=True):
             if not raw_line: 
                 continue
