@@ -1,0 +1,51 @@
+name: Telegram Bot Runner
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 */6 * * *"
+
+concurrency:
+  group: telegram-bot-singleton
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run bot (self-exits before job timeout)
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          FREE_API_KEY: ${{ secrets.FREE_API_KEY }}
+          HUB_API_KEY: ${{ secrets.HUB_API_KEY }}
+          ALLOWED_CHAT_IDS: ${{ secrets.ALLOWED_CHAT_IDS }}
+          MAX_RUNTIME_SECONDS: "20700"
+        run: python telegram_bot.py
+
+      - name: Commit updated memory back to repo
+        run: |
+          git config user.name "bot-memory-sync"
+          git config user.email "actions@users.noreply.github.com"
+          if [ -f bot_memory.json ] && ! git diff --quiet bot_memory.json 2>/dev/null; then
+            git add bot_memory.json
+            git commit -m "chore: sync bot memory [skip ci]"
+            git push
+          else
+            echo "No memory changes to commit."
+          fi
